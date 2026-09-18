@@ -8,9 +8,11 @@
 
 ‣ **Importância no projeto:** o Figma permite validar a estrutura e a experiência do sistema antes da implementação, reduzindo alterações desnecessárias durante o desenvolvimento.
 
+Link:  https://www.figma.com/design/VJsePwJ1epLh7DkUIKxVvm/Student-Portal--Community-?node-id=7-860&p=f&t=lv3Uc97CXyn1TOob-0 
+
 ### 🖼️ Referência visual
 
-![Template Figma](./images/template-figma.png)
+![Template Figma](./img/ideia_edutrack.png)
 
 
 ### Template Xano
