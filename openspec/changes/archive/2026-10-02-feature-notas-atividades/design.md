@@ -1,39 +1,37 @@
 ## Context
 
-Consulte `proposal.md` para motivação e objetivos. O EduTrack AI já possui tabelas de usuários e disciplinas estruturadas na pasta `table/` e grupos de API em `api/`. Para que o professor possa lançar notas por atividade, é necessário estruturar a entidade de atividades avaliativas e o lançamento de notas associado ao aluno e ao professor.
+Consulte `proposal.md` para motivação e objetivos. O EduTrack AI já possui tabelas de usuários e disciplinas no Xano. O objetivo desta mudança é viabilizar exclusivamente que o professor lance notas para alunos em atividades específicas.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Definir o modelo de dados Xano para atividades (`table/activity.xs`) e notas (`table/activity_grade.xs`).
-- Definir as rotas e regras de negócio de backend em Xano sob `api/grades/` para lançamento de notas com validação de valor máximo e consultas por atividade e por aluno.
-- Assegurar rastreabilidade com o professor que realizou o lançamento (`graded_by`).
+- Definir o esquema da tabela `activity_grades` em `table/activity_grades.xs` no formato XanoScript.
+- Definir o endpoint `POST /activity_grades` em `api/activity_grades/` para inserção de notas por atividade e aluno.
+- Garantir rastreabilidade associando o usuário do professor autenticado (`user_id`).
 
 **Non-Goals:**
-- Implementação de telas de interface gráfica / frontend (escopo restrito estritamente ao backend e schema solicitados, conforme `AGENTS.md`).
-- Correção automatizada de redação ou de código via IA (escopo de fases futuras).
-- Cálculo de ponderação complexa de média final do curso.
+- Não criar APIs de consulta (GET), listagens ou relatórios analíticos, respeitando estritamente o escopo solicitado no `AGENTS.md`.
+- Não implementar interfaces de frontend ou testes automatizados, conforme a Regra nº 1 do `AGENTS.md`.
 
 ## Decisions
 
-### Decisão 1: Modelo Relacional entre Atividade e Nota
-- **Abordagem**: Separar a atividade avaliativa (`activity`) do lançamento da nota (`activity_grade`).
-  - `table/activity.xs`: `id`, `created_at`, `subject_id` (FK para disciplina), `title`, `description`, `max_score` (numérico decimal/int).
-  - `table/activity_grade.xs`: `id`, `created_at`, `activity_id` (FK `activity`), `student_id` (FK `user`), `score` (decimal), `feedback` (text), `graded_by` (FK `user`).
-- **Racional**: Permite que uma mesma atividade tenha notas lançadas individualmente para múltiplos alunos, mantendo o histórico e os critérios da avaliação desacoplados da entrega de cada estudante.
+### Decisão 1: Estrutura da Tabela `activity_grades`
+- **Abordagem**: Criar `table/activity_grades.xs` com os campos:
+  - `id` (int, autoincrement, primary key)
+  - `created_at` (timestamp, default now)
+  - `activity_id` (int, identificador da atividade)
+  - `student_id` (int, FK para a tabela `user`)
+  - `grade` (decimal/numeric, valor da nota)
+  - `feedback` (text, opcional, comentários do professor)
+  - `user_id` (int, FK para a tabela `user`, identificando o professor que lançou)
+- **Racional**: Garante consistência relacional e rastreabilidade da avaliação.
 
-### Decisão 2: Mecanismo de Upsert na API de Lançamento de Nota
-- **Abordagem**: O endpoint `POST /grade` verifica se já existe uma nota registrada para o par `(activity_id, student_id)`. Se existir, atualiza o registro (`score`, `feedback`, `graded_by`); caso contrário, insere um novo registro.
-- **Racional**: Evita duplicidade de notas para o mesmo aluno na mesma atividade e simplifica o fluxo para o professor ao corrigir ou revisar uma avaliação já submetida.
-
-### Decisão 3: Validação de Faixa de Nota
-- **Abordagem**: Pré-condição na rota Xano garantindo que `score >= 0` e `score <= activity.max_score`.
-- **Racional**: Garante a integridade pedagógica dos dados lançados.
+### Decisão 2: Estrutura do Endpoint `POST /activity_grades`
+- **Abordagem**: Criar o endpoint `POST` autenticado (`auth = "user"`) para persistir o registro da nota no banco de dados.
+- **Racional**: Atende diretamente à ação de lançamento de nota solicitada pelo usuário.
 
 ## Risks / Trade-offs
 
-- **[Risk]** Lançamento de nota para aluno que não pertença à turma da disciplina.  
-  → **Mitigation**: A validação na API pode checar o vínculo do aluno com a disciplina da atividade.
+- **[Risk]** Lançamento de nota duplicada para a mesma atividade e aluno.  
+  → **Mitigation**: Configurar índice ou validação prévia na query Xano antes da inserção.
 
-- **[Risk]** Usuário com perfil de aluno tentando lançar notas.  
-  → **Mitigation**: Adicionar pré-condição de autorização no endpoint verificando a role do usuário ou chamada ao helper `enforce_role`.
