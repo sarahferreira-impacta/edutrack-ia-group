@@ -6,8 +6,10 @@ supporting in-memory session state (Streamlit) and optional Xano REST API backen
 
 from datetime import datetime
 import os
-import streamlit as st
 from typing import Dict, List, Optional, Any
+
+import requests
+import streamlit as st
 
 DEFAULT_SAMPLE_SUBJECTS: List[Dict[str, Any]] = [
     {
@@ -160,3 +162,83 @@ def delete_subject(subject_id: int) -> bool:
     initial_len = len(st.session_state.subjects)
     st.session_state.subjects = [s for s in st.session_state.subjects if s["id"] != subject_id]
     return len(st.session_state.subjects) < initial_len
+
+
+XANO_SUBJECTS_URL = (
+    "https://x8ki-letl-twmt.n7.xano.io/api:LG5UUEEH/subjects"
+)
+
+
+def _get_xano_auth_headers() -> Dict[str, str]:
+    """Builds the Authorization header when a token is configured."""
+    token = None
+    if "auth_token" in st.session_state:
+        token = st.session_state.get("auth_token")
+    if not token:
+        token = os.getenv("XANO_AUTH_TOKEN")
+    if not token and hasattr(st, "secrets"):
+        try:
+            token = st.secrets.get("XANO_AUTH_TOKEN")
+        except Exception:
+            token = None
+    if token:
+        return {"Authorization": f"Bearer {token}"}
+    return {}
+
+
+def _normalize_subject_record(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Converts a raw Xano subject payload into the internal app format."""
+    if not isinstance(item, dict):
+        return {}
+
+    subject_id = item.get("id")
+    if subject_id is None:
+        return {}
+
+    return {
+        "id": subject_id,
+        "name": (item.get("name") or item.get("title") or "Sem nome").strip() or "Sem nome",
+        "code": item.get("code") or item.get("subject_code") or "",
+        "professor": item.get("professor") or item.get("teacher") or item.get("responsible") or "",
+        "semester": item.get("semester") or item.get("period") or "",
+        "color": item.get("color") or "#4F46E5",
+        "status": item.get("status") or "active",
+        "created_at": item.get("created_at") or datetime.now().isoformat(),
+    }
+
+
+def fetch_subjects_from_xano(url: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetches all subjects from the configured Xano endpoint."""
+    target_url = url or os.getenv("XANO_SUBJECTS_URL", XANO_SUBJECTS_URL)
+    headers = _get_xano_auth_headers()
+
+    try:
+        response = requests.get(target_url, headers=headers, timeout=15)
+    except requests.RequestException:
+        return []
+
+    if not response.ok:
+        return []
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return []
+
+    if isinstance(payload, dict):
+        if isinstance(payload.get("data"), list):
+            payload = payload["data"]
+        elif isinstance(payload.get("result"), list):
+            payload = payload["result"]
+        else:
+            payload = [payload]
+
+    if not isinstance(payload, list):
+        return []
+
+    normalized: List[Dict[str, Any]] = []
+    for item in payload:
+        normalized_item = _normalize_subject_record(item)
+        if normalized_item:
+            normalized.append(normalized_item)
+    return normalized
