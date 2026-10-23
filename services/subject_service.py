@@ -11,6 +11,10 @@ from typing import Dict, List, Optional, Any
 import requests
 import streamlit as st
 
+from services.auth_service import load_dotenv
+
+load_dotenv()
+
 DEFAULT_SAMPLE_SUBJECTS: List[Dict[str, Any]] = [
     {
         "id": 1,
@@ -164,9 +168,20 @@ def delete_subject(subject_id: int) -> bool:
     return len(st.session_state.subjects) < initial_len
 
 
-XANO_SUBJECTS_URL = (
-    "https://x8ki-letl-twmt.n7.xano.io/api:LG5UUEEH/subjects"
-)
+DEFAULT_XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:w0xiZjdk"
+
+
+def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
+    """Builds a full Xano URL from the configured base URL or the environment override."""
+    if explicit_url:
+        return explicit_url.rstrip("/")
+
+    base_url = os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL") or DEFAULT_XANO_BASE_URL
+    normalized_path = path.lstrip("/")
+    return f"{base_url.rstrip('/')}/{normalized_path}"
+
+
+XANO_SUBJECTS_URL = _resolve_xano_url("subjects")
 
 
 def _get_xano_auth_headers() -> Dict[str, str]:
@@ -209,7 +224,7 @@ def _normalize_subject_record(item: Dict[str, Any]) -> Dict[str, Any]:
 
 def fetch_subjects_from_xano(url: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetches all subjects from the configured Xano endpoint."""
-    target_url = url or os.getenv("XANO_SUBJECTS_URL", XANO_SUBJECTS_URL)
+    target_url = url or os.getenv("XANO_SUBJECTS_URL") or _resolve_xano_url("subjects")
     headers = _get_xano_auth_headers()
 
     try:

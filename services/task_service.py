@@ -5,7 +5,24 @@ from typing import Any, Dict, List, Optional
 import requests
 import streamlit as st
 
-XANO_TASKS_URL = "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks"
+from services.auth_service import load_dotenv
+
+load_dotenv()
+
+DEFAULT_XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:w0xiZjdk"
+
+
+def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
+    """Builds a full Xano URL from the configured base URL or the environment override."""
+    if explicit_url:
+        return explicit_url.rstrip("/")
+
+    base_url = os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL") or DEFAULT_XANO_BASE_URL
+    normalized_path = path.lstrip("/")
+    return f"{base_url.rstrip('/')}/{normalized_path}"
+
+
+XANO_TASKS_URL = _resolve_xano_url("academic_tasks")
 
 
 def _get_xano_auth_headers() -> Dict[str, str]:
@@ -54,7 +71,7 @@ def _normalize_task_record(item: Dict[str, Any]) -> Dict[str, Any]:
 
 def fetch_tasks_from_xano(url: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetches all academic tasks from the configured Xano endpoint."""
-    target_url = url or os.getenv("XANO_TASKS_URL", XANO_TASKS_URL)
+    target_url = url or os.getenv("XANO_TASKS_URL") or _resolve_xano_url("academic_tasks")
     headers = _get_xano_auth_headers()
 
     try:
