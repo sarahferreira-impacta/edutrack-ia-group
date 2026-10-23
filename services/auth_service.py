@@ -28,9 +28,14 @@ def load_dotenv() -> Dict[str, str]:
 
 
 def get_xano_base_url() -> str:
-    """Returns the configured Xano base URL from env or .env file."""
+    """Returns the configured Xano auth base URL from env or .env file."""
     load_dotenv()
-    base_url = os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL") or ""
+    base_url = (
+        os.getenv("XANO_AUTH_BASE_URL")
+        or os.getenv("XANO_BASE_URL")
+        or os.getenv("XANO_API_URL")
+        or ""
+    )
     return base_url.rstrip("/")
 
 

@@ -69,6 +69,56 @@ def _normalize_task_record(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def get_auth_token() -> Optional[str]:
+    """Returns the current bearer token from Streamlit session or environment."""
+    if "auth_token" in st.session_state:
+        token = st.session_state.get("auth_token")
+        if token:
+            return str(token)
+    token = os.getenv("XANO_AUTH_TOKEN")
+    if token:
+        return str(token)
+    return None
+
+
+def create_task_in_xano(title: str, subject_id: Optional[int] = None, description: Optional[str] = None, due_date: Optional[str] = None, status: str = "pending") -> Dict[str, Any]:
+    """Creates a new academic task through the authenticated Xano tasks endpoint."""
+    token = get_auth_token()
+    if not token:
+        raise PermissionError("Você precisa estar logado para cadastrar tarefas.")
+
+    payload = {
+        "title": (title or "").strip(),
+        "description": (description or "").strip() or None,
+        "due_date": due_date,
+        "status": status or "pending",
+        "subject_id": subject_id,
+    }
+
+    if not payload["title"]:
+        raise ValueError("O título da tarefa é obrigatório.")
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    response = requests.post(
+        "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks",
+        json=payload,
+        headers=headers,
+        timeout=20,
+    )
+
+    if not response.ok:
+        try:
+            detail = response.json()
+        except ValueError:
+            detail = response.text
+        raise RuntimeError(f"Não foi possível cadastrar a tarefa: {detail}")
+
+    try:
+        return response.json()
+    except ValueError:
+        return {"title": payload["title"], "status": payload["status"], "subject_id": payload["subject_id"]}
+
+
 def fetch_tasks_from_xano(url: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetches all academic tasks from the configured Xano endpoint."""
     target_url = url or os.getenv("XANO_TASKS_URL") or _resolve_xano_url("academic_tasks")

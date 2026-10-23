@@ -1,12 +1,17 @@
 import streamlit as st
 
-from services.subject_service import fetch_subjects_from_xano
+from services.subject_service import create_subject_in_xano, fetch_subjects_from_xano, get_auth_token
 
 st.set_page_config(page_title="Disciplinas", page_icon="📚")
 
+if not get_auth_token():
+    st.warning("Você precisa estar logado para acessar esta página.")
+    st.info("Faça login na página de perfil para continuar.")
+    st.page_link("pages/3_👤_Perfil.py", label="Ir para Login")
+    st.stop()
+
 st.title("Gestão de Disciplinas")
 
-# Abas para separar Listagem de Cadastro
 tab_lista, tab_novo = st.tabs(["📋 Listar", "➕ Nova Disciplina"])
 
 with tab_novo:
@@ -18,7 +23,11 @@ with tab_novo:
 
         submitted = st.form_submit_button("Salvar")
         if submitted:
-            st.success(f"Disciplina {nome} cadastrada! (cadastro em desenvolvimento)")
+            try:
+                created = create_subject_in_xano(nome, teacher=professor)
+                st.success(f"Disciplina {created.get('name') or nome} cadastrada com sucesso!")
+            except Exception as exc:
+                st.error(str(exc))
 
 with tab_lista:
     try:

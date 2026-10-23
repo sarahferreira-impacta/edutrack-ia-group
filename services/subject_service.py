@@ -222,6 +222,53 @@ def _normalize_subject_record(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def get_auth_token() -> Optional[str]:
+    """Returns the current bearer token from Streamlit session or environment."""
+    if "auth_token" in st.session_state:
+        token = st.session_state.get("auth_token")
+        if token:
+            return str(token)
+    token = os.getenv("XANO_AUTH_TOKEN")
+    if token:
+        return str(token)
+    return None
+
+
+def create_subject_in_xano(name: str, teacher: Optional[str] = None, hours: Optional[int] = None) -> Dict[str, Any]:
+    """Creates a new subject through the authenticated Xano subjects endpoint."""
+    token = get_auth_token()
+    if not token:
+        raise PermissionError("Você precisa estar logado para cadastrar disciplinas.")
+
+    payload = {
+        "name": (name or "").strip(),
+        "teacher": (teacher or "").strip() or None,
+        "hours": hours if hours is not None else None,
+    }
+    if not payload["name"]:
+        raise ValueError("O nome da disciplina é obrigatório.")
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    response = requests.post(
+        "https://x8ki-letl-twmt.n7.xano.io/api:LG5UUEEH/subjects",
+        json=payload,
+        headers=headers,
+        timeout=20,
+    )
+
+    if not response.ok:
+        try:
+            detail = response.json()
+        except ValueError:
+            detail = response.text
+        raise RuntimeError(f"Não foi possível cadastrar a disciplina: {detail}")
+
+    try:
+        return response.json()
+    except ValueError:
+        return {"name": payload["name"], "teacher": payload["teacher"], "hours": payload["hours"]}
+
+
 def fetch_subjects_from_xano(url: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetches all subjects from the configured Xano endpoint."""
     target_url = url or os.getenv("XANO_SUBJECTS_URL") or _resolve_xano_url("subjects")
