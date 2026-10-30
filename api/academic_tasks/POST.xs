@@ -12,13 +12,13 @@ query "academic_tasks" verb=POST {
   }
 
   stack {
-    // Validar se a disciplina informada pertence ao usuário autenticado
-    db.get subjects {
-      field_name = "id"
-      field_value = $input.subject_id
+    // Validar se a disciplina informada pertence ao usuário autenticado via consulta por id e user_id
+    db.query subjects {
+      where = ($db.subjects.id == $input.subject_id) && ($db.subjects.user_id == $auth.id)
+      return = {type: "single"}
     } as $subject
 
-    precondition ($subject.user_id == $auth.id) {
+    precondition ($subject != null) {
       error_type = "accessdenied"
       error = "Acesso negado: a disciplina selecionada não pertence ao seu usuário."
     }
@@ -39,4 +39,3 @@ query "academic_tasks" verb=POST {
   tags = ["edutrack:academic"]
   guid = "u4pCiAYB5aKwpZQNUmHJzvf7RJ8"
 }
-

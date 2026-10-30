@@ -57,6 +57,10 @@ def _normalize_task_record(item: Dict[str, Any]) -> Dict[str, Any]:
     elif normalized_status == "done":
         normalized_status = "completed"
 
+    subject_name = item.get("subject_name")
+    if not subject_name and isinstance(item.get("_subjects"), dict):
+        subject_name = item.get("_subjects", {}).get("name")
+
     return {
         "id": task_id,
         "title": (item.get("title") or item.get("name") or "Sem título").strip() or "Sem título",
@@ -64,6 +68,7 @@ def _normalize_task_record(item: Dict[str, Any]) -> Dict[str, Any]:
         "due_date": item.get("due_date") or item.get("deadline") or "",
         "status": normalized_status,
         "subject_id": item.get("subject_id"),
+        "subject_name": subject_name,
         "user_id": item.get("user_id"),
         "created_at": item.get("created_at") or datetime.now().isoformat(),
     }
@@ -81,7 +86,13 @@ def get_auth_token() -> Optional[str]:
     return None
 
 
-def create_task_in_xano(title: str, subject_id: Optional[int] = None, description: Optional[str] = None, due_date: Optional[str] = None, status: str = "pending") -> Dict[str, Any]:
+def create_task_in_xano(
+    title: str,
+    subject_id: Optional[int] = None,
+    description: Optional[str] = None,
+    due_date: Optional[str] = None,
+    status: str = "pending",
+) -> Dict[str, Any]:
     """Creates a new academic task through the authenticated Xano tasks endpoint."""
     token = get_auth_token()
     if not token:
@@ -98,6 +109,9 @@ def create_task_in_xano(title: str, subject_id: Optional[int] = None, descriptio
     if not payload["title"]:
         raise ValueError("O título da tarefa é obrigatório.")
 
+    if not payload["subject_id"]:
+        raise ValueError("A disciplina da tarefa é obrigatória.")
+
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     response = requests.post(
         "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks",
@@ -109,9 +123,13 @@ def create_task_in_xano(title: str, subject_id: Optional[int] = None, descriptio
     if not response.ok:
         try:
             detail = response.json()
+            if isinstance(detail, dict):
+                error_msg = detail.get("message") or detail.get("error") or str(detail)
+            else:
+                error_msg = str(detail)
         except ValueError:
-            detail = response.text
-        raise RuntimeError(f"Não foi possível cadastrar a tarefa: {detail}")
+            error_msg = response.text or f"Erro {response.status_code}"
+        raise RuntimeError(f"{error_msg}")
 
     try:
         return response.json()
@@ -119,18 +137,70 @@ def create_task_in_xano(title: str, subject_id: Optional[int] = None, descriptio
         return {"title": payload["title"], "status": payload["status"], "subject_id": payload["subject_id"]}
 
 
-def fetch_tasks_from_xano(url: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetches all academic tasks from the configured Xano endpoint."""
+def fetch_tasks_from_xano(
+    url: Optional[str] = None,
+    subject_id: Optional[int] = None,
+    user_subjects: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """Fetches academic tasks from the configured Xano endpoint with fallback for subject_id requirements."""
     target_url = url or os.getenv("XANO_TASKS_URL") or _resolve_xano_url("academic_tasks")
     headers = _get_xano_auth_headers()
+    params = {"subject_id": subject_id} if subject_id is not None else None
 
     try:
-        response = requests.get(target_url, headers=headers, timeout=15)
-    except requests.RequestException:
-        return []
+        response = requests.get(target_url, headers=headers, params=params, timeout=15)
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Erro de conexão com o servidor Xano: {exc}")
 
     if not response.ok:
-        return []
+        msg = ""
+        is_missing_subject = False
+        try:
+            detail = response.json()
+            if isinstance(detail, dict):
+                msg = detail.get("message") or str(detail)
+            else:
+                msg = str(detail)
+            if "subject_id" in msg or "Missing param" in msg:
+                is_missing_subject = True
+        except ValueError:
+            msg = response.text or f"Código de status {response.status_code}"
+            if "subject_id" in msg:
+                is_missing_subject = True
+
+        # Fallback resiliente: se o endpoint no servidor Xano exigir subject_id
+        if response.status_code == 400 and is_missing_subject and subject_id is None:
+            subjects_list = user_subjects
+            if subjects_list is None:
+                from services.subject_service import fetch_subjects_from_xano
+                subjects_list = fetch_subjects_from_xano()
+
+            if not subjects_list:
+                return []
+
+            all_tasks: List[Dict[str, Any]] = []
+            seen_ids = set()
+            for s in subjects_list:
+                sid = s.get("id")
+                if sid is None:
+                    continue
+                try:
+                    sub_res = requests.get(target_url, headers=headers, params={"subject_id": sid}, timeout=15)
+                    if sub_res.ok:
+                        sub_payload = sub_res.json()
+                        if isinstance(sub_payload, dict):
+                            sub_payload = sub_payload.get("data") or sub_payload.get("result") or [sub_payload]
+                        if isinstance(sub_payload, list):
+                            for item in sub_payload:
+                                norm = _normalize_task_record(item)
+                                if norm and norm.get("id") not in seen_ids:
+                                    seen_ids.add(norm.get("id"))
+                                    all_tasks.append(norm)
+                except Exception:
+                    continue
+            return all_tasks
+
+        raise RuntimeError(f"Erro ao buscar tarefas (HTTP {response.status_code}): {msg}")
 
     try:
         payload = response.json()

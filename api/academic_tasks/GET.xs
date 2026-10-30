@@ -10,6 +10,9 @@ query "academic_tasks" verb=GET {
   stack {
     db.query academic_tasks {
       where = ($db.academic_tasks.user_id == $auth.id) && ($input.subject_id == null || $db.academic_tasks.subject_id == $input.subject_id)
+      sort = {
+        academic_tasks.due_date: "asc"
+      }
       return = {type: "list"}
     } as $user_tasks
   }
@@ -18,4 +21,3 @@ query "academic_tasks" verb=GET {
   tags = ["edutrack:academic"]
   guid = "mSuiHMvtPN3lgbh4KwdWkD9FPCo"
 }
-
