@@ -36,10 +36,17 @@ def _status_label(value):
 def _format_due_date(value):
     if not value:
         return "Sem prazo"
+    if isinstance(value, (int, float)):
+        try:
+            # Xano timestamp in milliseconds
+            dt = datetime.fromtimestamp(value / 1000 if value > 10000000000 else value)
+            return dt.strftime("%d/%m/%Y")
+        except Exception:
+            return str(value)
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%d/%m/%Y")
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).strftime("%d/%m/%Y")
     except ValueError:
-        return value
+        return str(value)
 
 
 if not get_auth_token():
@@ -50,27 +57,63 @@ if not get_auth_token():
 
 st.title("Minhas Tarefas")
 
+if "task_success_message" in st.session_state:
+    st.success(st.session_state.pop("task_success_message"))
+
+try:
+    user_subjects = fetch_subjects_from_xano()
+except Exception:
+    user_subjects = []
+
+subject_options = {
+    s["id"]: s.get("name") or f"Disciplina #{s['id']}"
+    for s in user_subjects
+    if isinstance(s, dict) and s.get("id")
+}
+
 with st.form("form_new_task", clear_on_submit=True):
     title = st.text_input("Título da tarefa", key="task_title")
     description = st.text_area("Descrição", key="task_description")
-    subject_id = st.number_input("ID da disciplina", min_value=1, step=1, key="task_subject_id")
+
+    if subject_options:
+        selected_subject_id = st.selectbox(
+            "Disciplina",
+            options=list(subject_options.keys()),
+            format_func=lambda sid: subject_options.get(sid, f"Disciplina #{sid}"),
+            key="task_subject_select",
+        )
+    else:
+        st.warning("Você ainda não possui disciplinas cadastradas. Cadastre uma disciplina primeiro para poder vinculá-la à tarefa.")
+        selected_subject_id = None
+
     due_date = st.date_input("Prazo", key="task_due_date")
-    status = st.selectbox("Status", ["pending", "in_progress", "completed"], key="task_status")
+    status = st.selectbox(
+        "Status",
+        ["pending", "in_progress", "completed"],
+        format_func=lambda s: {"pending": "Pendente", "in_progress": "Em andamento", "completed": "Concluída"}.get(s, s),
+        key="task_status",
+    )
     submitted = st.form_submit_button("Salvar tarefa", use_container_width=True)
+
     if submitted:
-        try:
-            with st.spinner("Salvando tarefa..."):
-                created = create_task_in_xano(
-                    title=title,
-                    subject_id=int(subject_id),
-                    description=description,
-                    due_date=due_date.isoformat(),
-                    status=status,
-                )
-            st.success(f"Tarefa {created.get('title') or title} cadastrada com sucesso!")
-            st.rerun()
-        except Exception as exc:
-            st.error(str(exc))
+        if not selected_subject_id:
+            st.error("Selecione uma disciplina cadastrada para vincular a tarefa.")
+        elif not (title or "").strip():
+            st.error("O título da tarefa é obrigatório.")
+        else:
+            try:
+                with st.spinner("Salvando tarefa..."):
+                    create_task_in_xano(
+                        title=title,
+                        subject_id=int(selected_subject_id),
+                        description=description,
+                        due_date=due_date.isoformat() if due_date else None,
+                        status=status,
+                    )
+                st.session_state["task_success_message"] = "Tarefa cadastrada com sucesso!"
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Não foi possível cadastrar a tarefa: {exc}")
 
 col1, col2 = st.columns([3, 1])
 
@@ -84,23 +127,21 @@ st.markdown("---")
 
 try:
     with st.spinner("Carregando suas tarefas do Xano..."):
-        tasks = fetch_tasks_from_xano()
-        subjects = fetch_subjects_from_xano()
+        tasks = fetch_tasks_from_xano(user_subjects=user_subjects)
     load_error = None
 except Exception as exc:
     tasks = []
-    subjects = []
     load_error = exc
 
 if load_error:
-    st.error(f"Não foi possível carregar as tarefas do Xano. Verifique a conexão ou a autenticação. Detalhe: {load_error}")
+    st.error(f"Não foi possível carregar as tarefas do Xano: {load_error}")
     if st.button("Tentar novamente"):
         st.rerun()
 
 subject_lookup = {
-    str(subject.get("id")): subject.get("name") or "Disciplina"
-    for subject in subjects
-    if isinstance(subject, dict)
+    s["id"]: s.get("name") or "Disciplina"
+    for s in user_subjects
+    if isinstance(s, dict) and s.get("id")
 }
 
 filtered_tasks = tasks
@@ -118,13 +159,21 @@ if search:
         if search_term in (task.get("title") or "").lower()
     ]
 
-if not load_error and not filtered_tasks:
-    st.info("Você ainda não possui nenhuma tarefa cadastrada. Clique no botão + para adicionar.")
+if not load_error and not tasks:
+    st.info("Você ainda não possui nenhuma tarefa cadastrada.")
+elif not load_error and not filtered_tasks:
+    st.info("Nenhuma tarefa encontrada com os filtros selecionados.")
 elif filtered_tasks:
     for task in filtered_tasks:
         task_status = _normalize_status(task.get("status"))
         label = _status_label(task.get("status"))
-        subject_name = subject_lookup.get(str(task.get("subject_id")), "Disciplina não vinculada")
+        task_subject_id = task.get("subject_id")
+        subject_name = (
+            task.get("subject_name")
+            or subject_lookup.get(task_subject_id)
+            or (f"Disciplina #{task_subject_id}" if task_subject_id else "Disciplina não vinculada")
+        )
+        task_id = task.get("id") or task.get("title")
         with st.expander(
             f"📌 {task.get('title') or 'Tarefa sem título'}",
             expanded=True,
@@ -134,4 +183,4 @@ elif filtered_tasks:
             st.write(f"**Status:** {label}")
             if task.get("description"):
                 st.write(f"**Descrição:** {task.get('description')}")
-            st.checkbox("Marcar como Concluída", value=task_status in {"completed", "done"})
+            st.checkbox("Marcar como Concluída", value=task_status in {"completed", "done"}, key=f"task_done_{task_id}")
