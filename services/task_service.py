@@ -25,6 +25,15 @@ def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
 XANO_TASKS_URL = _resolve_xano_url("academic_tasks")
 
 
+def _get_tasks_api_url(task_id: Optional[int] = None) -> str:
+    """Builds the current academic_tasks endpoint URL using the configured Xano base URL."""
+    base_url = os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL") or DEFAULT_XANO_BASE_URL
+    tasks_url = f"{base_url.rstrip('/')}/academic_tasks"
+    if task_id is None:
+        return tasks_url
+    return f"{tasks_url}/{task_id}"
+
+
 def _get_xano_auth_headers() -> Dict[str, str]:
     """Builds the Authorization header when a token is configured."""
     token = None
@@ -113,8 +122,9 @@ def create_task_in_xano(
         raise ValueError("A disciplina da tarefa é obrigatória.")
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    target_url = _get_tasks_api_url()
     response = requests.post(
-        "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks",
+        target_url,
         json=payload,
         headers=headers,
         timeout=20,
@@ -135,6 +145,40 @@ def create_task_in_xano(
         return response.json()
     except ValueError:
         return {"title": payload["title"], "status": payload["status"], "subject_id": payload["subject_id"]}
+
+
+def update_task_status_in_xano(task_id: int, status: str) -> Dict[str, Any]:
+    """Updates the status of an academic task in Xano via PATCH."""
+    token = get_auth_token()
+    if not token:
+        raise PermissionError("Você precisa estar logado para atualizar tarefas.")
+
+    target_url = _get_tasks_api_url(task_id=task_id)
+    payload = {"status": status}
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    response = requests.patch(
+        target_url,
+        json=payload,
+        headers=headers,
+        timeout=15,
+    )
+
+    if not response.ok:
+        try:
+            detail = response.json()
+            if isinstance(detail, dict):
+                error_msg = detail.get("message") or detail.get("error") or str(detail)
+            else:
+                error_msg = str(detail)
+        except ValueError:
+            error_msg = response.text or f"Erro {response.status_code}"
+        raise RuntimeError(f"Não foi possível atualizar a tarefa: {error_msg}")
+
+    try:
+        return response.json()
+    except ValueError:
+        return {"id": task_id, "status": status}
 
 
 def fetch_tasks_from_xano(

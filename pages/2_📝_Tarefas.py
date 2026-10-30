@@ -2,8 +2,13 @@ from datetime import datetime
 
 import streamlit as st
 
+from scripts.calculate_progress import calculate_progress_data
 from services.subject_service import fetch_subjects_from_xano, get_auth_token
-from services.task_service import create_task_in_xano, fetch_tasks_from_xano
+from services.task_service import (
+    create_task_in_xano,
+    fetch_tasks_from_xano,
+    update_task_status_in_xano,
+)
 
 
 STATUS_OPTIONS = ["Todos", "Pendente", "Em andamento", "Concluída"]
@@ -115,14 +120,6 @@ with st.form("form_new_task", clear_on_submit=True):
             except Exception as exc:
                 st.error(f"Não foi possível cadastrar a tarefa: {exc}")
 
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    search = st.text_input("Buscar tarefa...", placeholder="Ex: Estudar Pandas", key="task_search")
-
-with col2:
-    filtro = st.selectbox("Status", STATUS_OPTIONS, index=0, key="task_filter")
-
 st.markdown("---")
 
 try:
@@ -137,6 +134,34 @@ if load_error:
     st.error(f"Não foi possível carregar as tarefas do Xano: {load_error}")
     if st.button("Tentar novamente"):
         st.rerun()
+
+# Seção de Progresso Acadêmico por Disciplina (sempre calculada com dados reloaded do banco)
+if user_subjects and not load_error:
+    with st.expander("📊 Progresso Acadêmico por Disciplina", expanded=True):
+        cols_count = min(max(len(user_subjects), 1), 3)
+        prog_cols = st.columns(cols_count)
+        for idx, s in enumerate(user_subjects):
+            sid = s.get("id")
+            sname = s.get("name") or f"Disciplina #{sid}"
+            sub_tasks = [t for t in tasks if str(t.get("subject_id")) == str(sid)]
+            prog_data = calculate_progress_data(subject_id=sid, subject_name=sname, tasks=sub_tasks)
+            pct = prog_data["progress_percentage"]
+            total = prog_data["total_tasks"]
+            done = prog_data["completed_tasks"]
+
+            col_target = prog_cols[idx % cols_count]
+            with col_target:
+                st.markdown(f"**{sname}**")
+                st.progress(min(max(pct / 100.0, 0.0), 1.0))
+                st.caption(f"{done} de {total} tarefas concluídas ({pct}%)")
+
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    search = st.text_input("Buscar tarefa...", placeholder="Ex: Estudar Pandas", key="task_search")
+
+with col2:
+    filtro = st.selectbox("Status", STATUS_OPTIONS, index=0, key="task_filter")
 
 subject_lookup = {
     s["id"]: s.get("name") or "Disciplina"
@@ -183,4 +208,22 @@ elif filtered_tasks:
             st.write(f"**Status:** {label}")
             if task.get("description"):
                 st.write(f"**Descrição:** {task.get('description')}")
-            st.checkbox("Marcar como Concluída", value=task_status in {"completed", "done"}, key=f"task_done_{task_id}")
+
+            is_completed = task_status in {"completed", "done"}
+            checkbox_key = f"done_{task.get('id')}"
+            checked = st.checkbox(
+                "Marcar como Concluída",
+                value=is_completed,
+                key=checkbox_key,
+            )
+
+            # Só chamar o PATCH quando o usuário marcar o checkbox em uma tarefa que ainda NÃO está completed
+            if checked and not is_completed and task.get("id"):
+                try:
+                    with st.spinner("Concluindo tarefa..."):
+                        update_task_status_in_xano(task_id=int(task["id"]), status="completed")
+                    st.session_state["task_success_message"] = "Tarefa marcada como concluída!"
+                    st.rerun()
+                except Exception as exc:
+                    st.session_state[checkbox_key] = False
+                    st.error(f"Não foi possível concluir a tarefa: {exc}")
