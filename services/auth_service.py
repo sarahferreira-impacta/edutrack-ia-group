@@ -48,6 +48,15 @@ def build_xano_url(path: str) -> str:
     return f"{base_url}/{normalized_path}"
 
 
+def _unpack_xano_payload(value: Any) -> Any:
+    """Normalizes common Xano wrappers such as {data: ...} or {result: ...}."""
+    if isinstance(value, dict):
+        for key in ("data", "result", "user", "profile"):
+            if key in value and isinstance(value[key], (dict, list)):
+                return value[key]
+    return value
+
+
 def _request_json(method: str, path: str, payload: Optional[Dict[str, Any]] = None, token: Optional[str] = None):
     """Ensures consistent JSON requests to the Xano API."""
     headers = {"Content-Type": "application/json"}
@@ -72,7 +81,7 @@ def _request_json(method: str, path: str, payload: Optional[Dict[str, Any]] = No
         raise RuntimeError(f"Xano request failed ({response.status_code}): {detail}")
 
     try:
-        return response.json()
+        return _unpack_xano_payload(response.json())
     except ValueError:
         return {}
 
@@ -104,4 +113,90 @@ def get_current_user(token: str) -> Dict[str, Any]:
     """Fetches the authenticated user profile using auth/me."""
     if not token:
         raise ValueError("Token de autenticação ausente.")
-    return _request_json("GET", "auth/me", token=token)
+    user = _request_json("GET", "auth/me", token=token)
+    if isinstance(user, list):
+        return user[0] if user else {}
+    if isinstance(user, dict):
+        return user
+    return {}
+
+
+def update_current_user_profile(name: Optional[str] = None, email: Optional[str] = None, token: Optional[str] = None) -> Dict[str, Any]:
+    """Attempts to update the authenticated user profile via the user endpoint when available."""
+    token = token or os.getenv("XANO_AUTH_TOKEN") or (os.environ.get("auth_token") if "auth_token" in os.environ else None)
+    if not token:
+        raise ValueError("Token de autenticação ausente.")
+
+    user = get_current_user(token)
+    user_id = user.get("id")
+    if user_id is None:
+        raise ValueError("Não foi possível identificar o usuário autenticado.")
+
+    payload: Dict[str, Any] = {}
+    if name is not None:
+        value = (name or "").strip()
+        if not value:
+            raise ValueError("O nome completo não pode ficar vazio.")
+        payload["name"] = value
+    if email is not None:
+        value = (email or "").strip().lower()
+        if not value or "@" not in value:
+            raise ValueError("Informe um e-mail válido.")
+        payload["email"] = value
+
+    if not payload:
+        return user
+
+    urls = [
+        build_xano_url(f"user/{user_id}"),
+        build_xano_url("user"),
+    ]
+    last_error = None
+    for url in urls:
+        try:
+            response = requests.patch(url, json=payload, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, timeout=20)
+        except requests.RequestException as exc:
+            last_error = exc
+            continue
+
+        if response.ok:
+            try:
+                return _unpack_xano_payload(response.json())
+            except ValueError:
+                return {"success": True, "id": user_id, **payload}
+
+        last_error = response.text or f"Erro HTTP {response.status_code}"
+        if response.status_code not in {404, 405}:
+            break
+
+    raise RuntimeError(
+        "Não foi possível atualizar as informações do perfil no Xano. "
+        "Verifique se a rota de edição do usuário está habilitada no Xano e se o token do usuário é válido. "
+        f"Detalhes: {last_error}"
+    )
+
+
+def change_password(current_password: str, new_password: str, confirm_password: str, token: Optional[str] = None) -> Dict[str, Any]:
+    """Changes the authenticated user's password using the Xano reset endpoint."""
+    token = token or os.getenv("XANO_AUTH_TOKEN")
+    if not token:
+        raise ValueError("Token de autenticação ausente.")
+
+    if not current_password or not new_password or not confirm_password:
+        raise ValueError("Informe a senha atual, a nova senha e a confirmação.")
+    if len(new_password) < 8:
+        raise ValueError("A nova senha deve conter pelo menos 8 caracteres.")
+    if new_password != confirm_password:
+        raise ValueError("A nova senha e a confirmação não coincidem.")
+
+    url = build_xano_url("reset/update_password")
+    payload = {"password": new_password, "confirm_password": confirm_password}
+    response = requests.post(url, json=payload, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, timeout=20)
+    if not response.ok:
+        detail = response.text or "Não foi possível alterar a senha."
+        raise RuntimeError(f"Não foi possível alterar a senha: {detail}")
+
+    try:
+        return response.json()
+    except ValueError:
+        return {"success": True}
