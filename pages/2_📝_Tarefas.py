@@ -64,6 +64,27 @@ st.title("Minhas Tarefas")
 
 if "task_success_message" in st.session_state:
     st.success(st.session_state.pop("task_success_message"))
+if "task_error_message" in st.session_state:
+    st.error(st.session_state.pop("task_error_message"))
+
+
+def _handle_task_checkbox(task_id: int) -> None:
+    checkbox_key = f"done_{task_id}"
+    desired_state = bool(st.session_state.get(checkbox_key))
+    target_status = "completed" if desired_state else "pending"
+
+    try:
+        with st.spinner("Atualizando tarefa..."):
+            update_task_status_in_xano(task_id=int(task_id), status=target_status)
+        st.session_state["task_success_message"] = (
+            "Tarefa marcada como concluída!" if desired_state else "Tarefa reaberta e progresso recalculado."
+        )
+        st.rerun()
+    except Exception as exc:
+        st.session_state["task_error_message"] = (
+            f"Não foi possível atualizar a tarefa: {exc}"
+        )
+        st.rerun()
 
 try:
     user_subjects = fetch_subjects_from_xano()
@@ -211,19 +232,10 @@ elif filtered_tasks:
 
             is_completed = task_status in {"completed", "done"}
             checkbox_key = f"done_{task.get('id')}"
-            checked = st.checkbox(
+            st.checkbox(
                 "Marcar como Concluída",
                 value=is_completed,
                 key=checkbox_key,
+                on_change=_handle_task_checkbox,
+                args=(int(task["id"]),),
             )
-
-            # Só chamar o PATCH quando o usuário marcar o checkbox em uma tarefa que ainda NÃO está completed
-            if checked and not is_completed and task.get("id"):
-                try:
-                    with st.spinner("Concluindo tarefa..."):
-                        update_task_status_in_xano(task_id=int(task["id"]), status="completed")
-                    st.session_state["task_success_message"] = "Tarefa marcada como concluída!"
-                    st.rerun()
-                except Exception as exc:
-                    st.session_state[checkbox_key] = False
-                    st.error(f"Não foi possível concluir a tarefa: {exc}")

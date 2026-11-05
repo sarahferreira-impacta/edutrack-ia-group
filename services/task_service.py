@@ -10,6 +10,7 @@ from services.auth_service import load_dotenv
 load_dotenv()
 
 DEFAULT_XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:w0xiZjdk"
+DEFAULT_TASKS_URL = "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks"
 
 
 def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
@@ -17,18 +18,23 @@ def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
     if explicit_url:
         return explicit_url.rstrip("/")
 
-    base_url = os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL") or DEFAULT_XANO_BASE_URL
+    env_value = os.getenv("XANO_TASKS_URL") or os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL")
+    base_url = env_value or DEFAULT_TASKS_URL
     normalized_path = path.lstrip("/")
+    if base_url.rstrip("/").endswith("/academic_tasks") and normalized_path == "academic_tasks":
+        return base_url.rstrip("/")
+    if base_url.rstrip("/").endswith("/academic_tasks") and normalized_path:
+        return f"{base_url.rstrip('/')}/{normalized_path}"
     return f"{base_url.rstrip('/')}/{normalized_path}"
 
 
-XANO_TASKS_URL = _resolve_xano_url("academic_tasks")
+XANO_TASKS_URL = os.getenv("XANO_TASKS_URL") or DEFAULT_TASKS_URL
 
 
 def _get_tasks_api_url(task_id: Optional[int] = None) -> str:
     """Builds the current academic_tasks endpoint URL using the configured Xano base URL."""
-    base_url = os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL") or DEFAULT_XANO_BASE_URL
-    tasks_url = f"{base_url.rstrip('/')}/academic_tasks"
+    base_url = os.getenv("XANO_TASKS_URL") or DEFAULT_TASKS_URL
+    tasks_url = base_url.rstrip("/")
     if task_id is None:
         return tasks_url
     return f"{tasks_url}/{task_id}"
@@ -147,14 +153,66 @@ def create_task_in_xano(
         return {"title": payload["title"], "status": payload["status"], "subject_id": payload["subject_id"]}
 
 
-def update_task_status_in_xano(task_id: int, status: str) -> Dict[str, Any]:
-    """Updates the status of an academic task in Xano via PATCH."""
+def _fetch_task_by_id(task_id: int) -> Dict[str, Any]:
+    """Loads the full current task payload from Xano before performing a PATCH update."""
     token = get_auth_token()
     if not token:
         raise PermissionError("Você precisa estar logado para atualizar tarefas.")
 
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    response = requests.get(_get_tasks_api_url(task_id=task_id), headers=headers, timeout=15)
+
+    if not response.ok:
+        try:
+            detail = response.json()
+            if isinstance(detail, dict):
+                error_msg = detail.get("message") or detail.get("error") or str(detail)
+            else:
+                error_msg = str(detail)
+        except ValueError:
+            error_msg = response.text or f"Erro {response.status_code}"
+        raise RuntimeError(f"Não foi possível carregar a tarefa: {error_msg}")
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Resposta inválida ao carregar a tarefa para atualização.") from exc
+
+    if isinstance(payload, dict):
+        if payload.get("data") is not None and isinstance(payload.get("data"), dict):
+            payload = payload["data"]
+        elif payload.get("result") is not None and isinstance(payload.get("result"), dict):
+            payload = payload["result"]
+    elif isinstance(payload, list):
+        if not payload:
+            raise RuntimeError("Tarefa não encontrada no Xano.")
+        payload = payload[0]
+
+    if not isinstance(payload, dict):
+        raise RuntimeError("Resposta inválida ao carregar a tarefa para atualização.")
+
+    return payload
+
+
+def update_task_status_in_xano(task_id: int, status: str) -> Dict[str, Any]:
+    """Updates the status of an academic task in Xano via PATCH using the full required payload."""
+    token = get_auth_token()
+    if not token:
+        raise PermissionError("Você precisa estar logado para atualizar tarefas.")
+
+    current_task = _fetch_task_by_id(task_id)
+    payload = {
+        "title": current_task.get("title") or current_task.get("name") or "Sem título",
+        "description": current_task.get("description") or "",
+        "due_date": current_task.get("due_date") or current_task.get("deadline") or "",
+        "subject_id": current_task.get("subject_id"),
+        "status": status,
+    }
+
+    if payload["subject_id"] is None:
+        raise RuntimeError("A tarefa não possui disciplina vinculada e não pode ser atualizada.")
+
     target_url = _get_tasks_api_url(task_id=task_id)
-    payload = {"status": status}
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     response = requests.patch(
@@ -179,6 +237,33 @@ def update_task_status_in_xano(task_id: int, status: str) -> Dict[str, Any]:
         return response.json()
     except ValueError:
         return {"id": task_id, "status": status}
+
+
+def delete_task_in_xano(task_id: int) -> Dict[str, Any]:
+    """Deletes an academic task from Xano after validating ownership."""
+    token = get_auth_token()
+    if not token:
+        raise PermissionError("Você precisa estar logado para excluir tarefas.")
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    target_url = _get_tasks_api_url(task_id=task_id)
+    response = requests.delete(target_url, headers=headers, timeout=15)
+
+    if not response.ok:
+        try:
+            detail = response.json()
+            if isinstance(detail, dict):
+                error_msg = detail.get("message") or detail.get("error") or str(detail)
+            else:
+                error_msg = str(detail)
+        except ValueError:
+            error_msg = response.text or f"Erro {response.status_code}"
+        raise RuntimeError(f"Não foi possível excluir a tarefa: {error_msg}")
+
+    try:
+        return response.json()
+    except ValueError:
+        return {"success": True, "deleted_id": task_id}
 
 
 def fetch_tasks_from_xano(

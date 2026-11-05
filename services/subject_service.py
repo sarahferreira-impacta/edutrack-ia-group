@@ -169,6 +169,7 @@ def delete_subject(subject_id: int) -> bool:
 
 
 DEFAULT_XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:w0xiZjdk"
+DEFAULT_SUBJECTS_URL = "https://x8ki-letl-twmt.n7.xano.io/api:LG5UUEEH/subjects"
 
 
 def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
@@ -176,12 +177,26 @@ def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
     if explicit_url:
         return explicit_url.rstrip("/")
 
-    base_url = os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL") or DEFAULT_XANO_BASE_URL
+    env_value = os.getenv("XANO_SUBJECTS_URL") or os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL")
+    base_url = env_value or DEFAULT_SUBJECTS_URL
     normalized_path = path.lstrip("/")
+    if base_url.rstrip("/").endswith("/subjects") and normalized_path == "subjects":
+        return base_url.rstrip("/")
+    if base_url.rstrip("/").endswith("/subjects") and normalized_path:
+        return f"{base_url.rstrip('/')}/{normalized_path}"
     return f"{base_url.rstrip('/')}/{normalized_path}"
 
 
-XANO_SUBJECTS_URL = _resolve_xano_url("subjects")
+XANO_SUBJECTS_URL = os.getenv("XANO_SUBJECTS_URL") or DEFAULT_SUBJECTS_URL
+
+
+def _get_subjects_api_url(subject_id: Optional[int] = None) -> str:
+    """Builds the current subjects endpoint URL using the configured Xano base URL."""
+    base_url = os.getenv("XANO_SUBJECTS_URL") or DEFAULT_SUBJECTS_URL
+    subjects_url = base_url.rstrip("/")
+    if subject_id is None:
+        return subjects_url
+    return f"{subjects_url}/{subject_id}"
 
 
 def _get_xano_auth_headers() -> Dict[str, str]:
@@ -250,7 +265,7 @@ def create_subject_in_xano(name: str, teacher: Optional[str] = None, hours: Opti
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     response = requests.post(
-        "https://x8ki-letl-twmt.n7.xano.io/api:LG5UUEEH/subjects",
+        _get_subjects_api_url(),
         json=payload,
         headers=headers,
         timeout=20,
@@ -269,9 +284,72 @@ def create_subject_in_xano(name: str, teacher: Optional[str] = None, hours: Opti
         return {"name": payload["name"], "teacher": payload["teacher"], "hours": payload["hours"]}
 
 
+def update_subject_in_xano(subject_id: int, name: Optional[str] = None, teacher: Optional[str] = None, hours: Optional[int] = None) -> Dict[str, Any]:
+    """Updates an existing subject through the Xano PATCH endpoint."""
+    token = get_auth_token()
+    if not token:
+        raise PermissionError("Você precisa estar logado para atualizar disciplinas.")
+
+    payload = {}
+    if name is not None:
+        payload["name"] = (name or "").strip()
+    if teacher is not None:
+        payload["teacher"] = (teacher or "").strip() or None
+    if hours is not None:
+        payload["hours"] = hours
+
+    if not payload:
+        return {"id": subject_id}
+
+    if payload.get("name") == "":
+        raise ValueError("O nome da disciplina não pode ser vazio.")
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    response = requests.patch(
+        _get_subjects_api_url(subject_id),
+        json=payload,
+        headers=headers,
+        timeout=15,
+    )
+
+    if not response.ok:
+        try:
+            detail = response.json()
+        except ValueError:
+            detail = response.text
+        raise RuntimeError(f"Não foi possível atualizar a disciplina: {detail}")
+
+    try:
+        return response.json()
+    except ValueError:
+        return {"id": subject_id, **payload}
+
+
+def delete_subject_in_xano(subject_id: int) -> Dict[str, Any]:
+    """Deletes a subject from Xano after validating ownership."""
+    token = get_auth_token()
+    if not token:
+        raise PermissionError("Você precisa estar logado para excluir disciplinas.")
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    response = requests.delete(_get_subjects_api_url(subject_id), headers=headers, timeout=15)
+
+    if not response.ok:
+        try:
+            detail = response.json()
+        except ValueError:
+            detail = response.text
+        raise RuntimeError(f"Não foi possível excluir a disciplina: {detail}")
+
+    try:
+        return response.json()
+    except ValueError:
+        return {"success": True, "deleted_id": subject_id}
+
+
 def fetch_subjects_from_xano(url: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetches all subjects from the configured Xano endpoint."""
-    target_url = url or os.getenv("XANO_SUBJECTS_URL") or _resolve_xano_url("subjects")
+    target_url = url or os.getenv("XANO_SUBJECTS_URL") or _resolve_xano_url("subjects") or _get_subjects_api_url()
     headers = _get_xano_auth_headers()
 
     try:
