@@ -44,6 +44,31 @@ class TestXanoIntegration(unittest.TestCase):
         self.assertEqual(tasks[0]["status"], "pending")
         self.assertEqual(mock_get.call_args.args[0], "https://example.com/academic_tasks")
 
+    @patch("services.subject_service.requests.get")
+    @patch("services.subject_service.os.getenv")
+    def test_fetch_subjects_from_xano_keeps_teacher_and_hours_mapping(self, mock_getenv, mock_get):
+        mock_getenv.side_effect = lambda key, default=None: {
+            "XANO_SUBJECTS_URL": "https://example.com/subjects",
+        }.get(key, default)
+        mock_response = mock_get.return_value
+        mock_response.ok = True
+        mock_response.json.return_value = [
+            {
+                "id": 42,
+                "name": "Engenharia de Software",
+                "teacher": "Gilson",
+                "hours": 60,
+                "status": "active",
+            }
+        ]
+
+        subjects = fetch_subjects_from_xano()
+
+        self.assertEqual(len(subjects), 1)
+        self.assertEqual(subjects[0]["teacher"], "Gilson")
+        self.assertEqual(subjects[0]["hours"], 60)
+        self.assertEqual(subjects[0]["professor"], "Gilson")
+
     @patch("services.task_service.requests.patch")
     @patch("services.task_service.requests.get")
     @patch("services.task_service.get_auth_token", return_value="token-123")

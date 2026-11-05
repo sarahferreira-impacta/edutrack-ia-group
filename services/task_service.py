@@ -194,8 +194,15 @@ def _fetch_task_by_id(task_id: int) -> Dict[str, Any]:
     return payload
 
 
-def update_task_status_in_xano(task_id: int, status: str) -> Dict[str, Any]:
-    """Updates the status of an academic task in Xano via PATCH using the full required payload."""
+def update_task_in_xano(
+    task_id: int,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    subject_id: Optional[int] = None,
+    due_date: Optional[str] = None,
+    status: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Updates a full task payload in Xano through PATCH while preserving required fields."""
     token = get_auth_token()
     if not token:
         raise PermissionError("Você precisa estar logado para atualizar tarefas.")
@@ -206,9 +213,22 @@ def update_task_status_in_xano(task_id: int, status: str) -> Dict[str, Any]:
         "description": current_task.get("description") or "",
         "due_date": current_task.get("due_date") or current_task.get("deadline") or "",
         "subject_id": current_task.get("subject_id"),
-        "status": status,
+        "status": current_task.get("status") or "pending",
     }
 
+    if title is not None:
+        payload["title"] = (title or "").strip() or current_task.get("title") or "Sem título"
+    if description is not None:
+        payload["description"] = description or ""
+    if subject_id is not None:
+        payload["subject_id"] = subject_id
+    if due_date is not None:
+        payload["due_date"] = due_date
+    if status is not None:
+        payload["status"] = status
+
+    if not payload["title"]:
+        raise ValueError("O título da tarefa é obrigatório.")
     if payload["subject_id"] is None:
         raise RuntimeError("A tarefa não possui disciplina vinculada e não pode ser atualizada.")
 
@@ -236,7 +256,15 @@ def update_task_status_in_xano(task_id: int, status: str) -> Dict[str, Any]:
     try:
         return response.json()
     except ValueError:
-        return {"id": task_id, "status": status}
+        return {"id": task_id, "status": payload["status"]}
+
+
+def update_task_status_in_xano(task_id: int, status: str) -> Dict[str, Any]:
+    """Updates the status of an academic task in Xano via PATCH using the full required payload."""
+    return update_task_in_xano(
+        task_id=task_id,
+        status=status,
+    )
 
 
 def delete_task_in_xano(task_id: int) -> Dict[str, Any]:

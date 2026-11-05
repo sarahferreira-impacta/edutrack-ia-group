@@ -225,11 +225,27 @@ def _normalize_subject_record(item: Dict[str, Any]) -> Dict[str, Any]:
     if subject_id is None:
         return {}
 
+    teacher_name = (
+        item.get("teacher")
+        or item.get("professor")
+        or item.get("professor_name")
+        or item.get("responsible")
+        or ""
+    )
+    hours_value = item.get("hours")
+    if hours_value is None:
+        for alt_key in ("total_hours", "credit_hours", "hour_count", "workload_hours"):
+            if alt_key in item:
+                hours_value = item.get(alt_key)
+                break
+
     return {
         "id": subject_id,
         "name": (item.get("name") or item.get("title") or "Sem nome").strip() or "Sem nome",
         "code": item.get("code") or item.get("subject_code") or "",
-        "professor": item.get("professor") or item.get("teacher") or item.get("responsible") or "",
+        "teacher": teacher_name,
+        "hours": hours_value if hours_value is not None else 0,
+        "professor": teacher_name,
         "semester": item.get("semester") or item.get("period") or "",
         "color": item.get("color") or "#4F46E5",
         "status": item.get("status") or "active",
