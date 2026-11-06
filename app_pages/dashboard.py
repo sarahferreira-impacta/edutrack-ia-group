@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
+from datetime import datetime
 
+from gerar_relatorio import generate_report_pdf
 from services.subject_service import count_active_subjects, fetch_subjects_from_xano, get_all_subjects, get_auth_token
 from services.task_service import fetch_tasks_from_xano
 
@@ -59,6 +61,53 @@ def summarize_subject_progress(subjects, tasks):
     return sorted(results, key=lambda item: item["subject_name"].lower())
 
 
+def _build_report_data(user, subjects, tasks, dashboard):
+    """Build the data dict expected by generate_report_pdf using real session data."""
+    subject_progress = summarize_subject_progress(subjects, tasks)
+    report_subjects = []
+    for sp in subject_progress:
+        report_subjects.append({
+            "name": sp["subject_name"],
+            "teacher": sp.get("teacher", ""),
+            "hours": sp.get("hours", 0),
+            "total_tasks": sp["total_tasks"],
+            "completed": sp["completed_tasks"],
+            "pending": sp["pending_tasks"],
+            "progress": sp["progress_percentage"],
+        })
+
+    # Build subject name lookup for tasks
+    subject_names = {}
+    for s in subjects or []:
+        subject_names[str(s.get("id", ""))] = s.get("name") or "Sem disciplina"
+
+    report_tasks = []
+    for t in tasks or []:
+        report_tasks.append({
+            "title": t.get("title") or t.get("name") or "Sem título",
+            "subject": subject_names.get(str(t.get("subject_id", "")), "Sem disciplina"),
+            "deadline": t.get("due_date") or t.get("deadline") or "Sem prazo",
+            "status": _normalize_task_status(t.get("status")),
+        })
+
+    return {
+        "user": {
+            "name": user.get("name", "") if user else "",
+            "email": user.get("email", "") if user else "",
+            "id": user.get("id", "") if user else "",
+        },
+        "issued_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "subjects": report_subjects,
+        "tasks": report_tasks,
+        "indicators": {
+            "subjects": dashboard["total_disciplines"],
+            "total_tasks": dashboard["total_tasks"],
+            "completed": dashboard["completed_tasks"],
+            "overall_progress": dashboard["overall_completion"],
+        },
+    }
+
+
 def render_dashboard_page():
     st.title("📊 Painel de Controle")
     st.caption("Bem-vindo ao seu assistente acadêmico! Acompanhe suas disciplinas, tarefas e seu progresso acadêmico.")
@@ -77,6 +126,24 @@ def render_dashboard_page():
         for subject in subjects
         if str(subject.get("status") or "active").lower() in {"active", "in_progress", "em andamento"}
     )
+
+    # PDF download button – uses real data from the authenticated user
+    token = st.session_state.get("auth_token")
+    if token:
+        user = st.session_state.get("current_user") or {}
+        try:
+            report_data = _build_report_data(user, subjects, tasks, dashboard)
+            pdf_bytes = generate_report_pdf(report_data)
+            st.download_button(
+                label="📄 Baixar relatório acadêmico",
+                data=pdf_bytes,
+                file_name="relatorio_academico.pdf",
+                mime="application/pdf",
+            )
+        except Exception as exc:
+            st.error(f"Erro ao gerar relatório: {exc}")
+    else:
+        st.info("Faça login para gerar o relatório acadêmico.")
 
     col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
     col1.metric("Disciplinas ativas", active_subjects_count)
