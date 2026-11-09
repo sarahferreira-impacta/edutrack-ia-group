@@ -1,0 +1,4 @@
+- [ ] Criar script Python `gerar_relatorio.py` que gera PDF com desempenho do aluno usando biblioteca como `reportlab` ou `fpdf`.
+- [ ] Atualizar `requirements.txt` com dependências necessárias (ex.: `reportlab==4.0.0` ou `fpdf2==2.7.5`).
+- [ ] Definir endpoint no Xano (`GET /relatorio-pdf/{id}`) que retorna o PDF gerado ou link de download.
+- [ ] Documentar fluxo de geração e download no README ou em documentação interna.
