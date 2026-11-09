@@ -28,6 +28,13 @@ class TestStreamlitApp(unittest.TestCase):
         for page_name in ["Dashboard", "Disciplinas", "Tarefas", "Perfil"]:
             self.assertIn(page_name, source)
 
+    def test_auth_header_and_password_toggle_css(self):
+        source = Path(APP_PATH).read_text(encoding="utf-8")
+        self.assertIn("auth-topbar-title", source)
+        self.assertIn("color: #FFFFFF", source)
+        self.assertIn("button[aria-label*=\"Show password\"]", source)
+        self.assertIn("button[aria-label*=\"Hide password\"]", source)
+
 
 if __name__ == "__main__":
     unittest.main()

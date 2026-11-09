@@ -211,7 +211,7 @@ def update_task_in_xano(
     payload = {
         "title": current_task.get("title") or current_task.get("name") or "Sem título",
         "description": current_task.get("description") or "",
-        "due_date": current_task.get("due_date") or current_task.get("deadline") or "",
+        "due_date": current_task.get("due_date") or current_task.get("deadline") or None,
         "subject_id": current_task.get("subject_id"),
         "status": current_task.get("status") or "pending",
     }
@@ -223,7 +223,8 @@ def update_task_in_xano(
     if subject_id is not None:
         payload["subject_id"] = subject_id
     if due_date is not None:
-        payload["due_date"] = due_date
+        # Se foi fornecida string vazia ou None, limpa a data
+        payload["due_date"] = due_date if due_date else None
     if status is not None:
         payload["status"] = status
 
