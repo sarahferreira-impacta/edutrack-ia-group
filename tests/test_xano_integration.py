@@ -6,6 +6,7 @@ from services.task_service import create_task_in_xano, fetch_tasks_from_xano, up
 
 
 class TestXanoIntegration(unittest.TestCase):
+    @patch("services.subject_service.st.secrets", {})
     @patch("services.subject_service.requests.get")
     @patch("services.subject_service.os.getenv")
     def test_fetch_subjects_from_xano_success(self, mock_getenv, mock_get):
@@ -25,6 +26,7 @@ class TestXanoIntegration(unittest.TestCase):
         self.assertEqual(subjects[0]["professor"], "Prof. Ada")
         self.assertEqual(mock_get.call_args.args[0], "https://example.com/subjects")
 
+    @patch("services.task_service.st.secrets", {})
     @patch("services.task_service.requests.get")
     @patch("services.task_service.os.getenv")
     def test_fetch_tasks_from_xano_success(self, mock_getenv, mock_get):
@@ -44,6 +46,7 @@ class TestXanoIntegration(unittest.TestCase):
         self.assertEqual(tasks[0]["status"], "pending")
         self.assertEqual(mock_get.call_args.args[0], "https://example.com/academic_tasks")
 
+    @patch("services.subject_service.st.secrets", {})
     @patch("services.subject_service.requests.get")
     @patch("services.subject_service.os.getenv")
     def test_fetch_subjects_from_xano_keeps_teacher_and_hours_mapping(self, mock_getenv, mock_get):
@@ -102,6 +105,7 @@ class TestXanoIntegration(unittest.TestCase):
             },
         )
 
+    @patch("services.task_service.st.secrets", {})
     @patch("services.task_service.requests.patch")
     @patch("services.task_service.requests.get")
     @patch("services.task_service.requests.post")

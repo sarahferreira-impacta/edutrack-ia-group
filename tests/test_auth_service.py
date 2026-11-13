@@ -1,15 +1,27 @@
 import unittest
 from unittest.mock import patch
 
-from services.auth_service import build_xano_url, get_current_user, signup_user, login_user, update_current_user_profile
+from services.auth_service import (
+    build_xano_url,
+    get_config_value,
+    get_current_user,
+    signup_user,
+    login_user,
+    update_current_user_profile,
+)
 from services.subject_service import create_subject_in_xano
 from services.task_service import create_task_in_xano
 
 
 class TestAuthService(unittest.TestCase):
+    @patch("services.auth_service.st.secrets", {})
     @patch("services.auth_service.os.environ", {"XANO_AUTH_BASE_URL": "https://example.com/api:w0xiZjdk"})
     def test_build_xano_url(self):
         self.assertEqual(build_xano_url("auth/login"), "https://example.com/api:w0xiZjdk/auth/login")
+
+    @patch("services.auth_service.st.secrets", {"XANO_AUTH_BASE_URL": "https://secret.example.com/api:w0xiZjdk"})
+    def test_get_config_value_prefers_streamlit_secrets(self):
+        self.assertEqual(get_config_value("XANO_AUTH_BASE_URL"), "https://secret.example.com/api:w0xiZjdk")
 
     @patch("services.auth_service.requests.post")
     @patch("services.auth_service.get_xano_base_url", return_value="https://example.com/api:w0xiZjdk")

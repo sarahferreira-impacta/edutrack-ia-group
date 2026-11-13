@@ -505,7 +505,14 @@ p, label, .stCaption, caption {
    HEADER TOP-BAR
    ========================================================= */
 [data-testid="stHeader"] {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    height: auto !important;
     background-color: var(--navy) !important;
+    box-shadow: none !important;
+    z-index: auto !important;
 }
 [data-testid="stToolbar"] {
     display: none !important;

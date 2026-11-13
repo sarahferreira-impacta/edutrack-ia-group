@@ -5,9 +5,7 @@ from typing import Any, Dict, List, Optional
 import requests
 import streamlit as st
 
-from services.auth_service import load_dotenv
-
-load_dotenv()
+from services.auth_service import get_config_value
 
 DEFAULT_XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:w0xiZjdk"
 DEFAULT_TASKS_URL = "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks"
@@ -18,7 +16,7 @@ def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
     if explicit_url:
         return explicit_url.rstrip("/")
 
-    env_value = os.getenv("XANO_TASKS_URL") or os.getenv("XANO_BASE_URL") or os.getenv("XANO_API_URL")
+    env_value = get_config_value("XANO_TASKS_URL") or get_config_value("XANO_BASE_URL") or get_config_value("XANO_API_URL")
     base_url = env_value or DEFAULT_TASKS_URL
     normalized_path = path.lstrip("/")
     if base_url.rstrip("/").endswith("/academic_tasks") and normalized_path == "academic_tasks":
@@ -28,12 +26,12 @@ def _resolve_xano_url(path: str, explicit_url: Optional[str] = None) -> str:
     return f"{base_url.rstrip('/')}/{normalized_path}"
 
 
-XANO_TASKS_URL = os.getenv("XANO_TASKS_URL") or DEFAULT_TASKS_URL
+XANO_TASKS_URL = get_config_value("XANO_TASKS_URL") or DEFAULT_TASKS_URL
 
 
 def _get_tasks_api_url(task_id: Optional[int] = None) -> str:
     """Builds the current academic_tasks endpoint URL using the configured Xano base URL."""
-    base_url = os.getenv("XANO_TASKS_URL") or DEFAULT_TASKS_URL
+    base_url = get_config_value("XANO_TASKS_URL") or DEFAULT_TASKS_URL
     tasks_url = base_url.rstrip("/")
     if task_id is None:
         return tasks_url
@@ -46,7 +44,7 @@ def _get_xano_auth_headers() -> Dict[str, str]:
     if "auth_token" in st.session_state:
         token = st.session_state.get("auth_token")
     if not token:
-        token = os.getenv("XANO_AUTH_TOKEN")
+        token = get_config_value("XANO_AUTH_TOKEN")
     if not token and hasattr(st, "secrets"):
         try:
             token = st.secrets.get("XANO_AUTH_TOKEN")
@@ -90,12 +88,12 @@ def _normalize_task_record(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_auth_token() -> Optional[str]:
-    """Returns the current bearer token from Streamlit session or environment."""
+    """Returns the current bearer token from Streamlit session or configuration secrets."""
     if "auth_token" in st.session_state:
         token = st.session_state.get("auth_token")
         if token:
             return str(token)
-    token = os.getenv("XANO_AUTH_TOKEN")
+    token = get_config_value("XANO_AUTH_TOKEN")
     if token:
         return str(token)
     return None
@@ -301,7 +299,7 @@ def fetch_tasks_from_xano(
     user_subjects: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Fetches academic tasks from the configured Xano endpoint with fallback for subject_id requirements."""
-    target_url = url or os.getenv("XANO_TASKS_URL") or _resolve_xano_url("academic_tasks")
+    target_url = url or get_config_value("XANO_TASKS_URL") or _resolve_xano_url("academic_tasks")
     headers = _get_xano_auth_headers()
     params = {"subject_id": subject_id} if subject_id is not None else None
 

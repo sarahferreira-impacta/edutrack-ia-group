@@ -19,17 +19,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import requests
-from services.auth_service import load_dotenv
+from services.auth_service import get_config_value
 
-load_dotenv()
-
-DEFAULT_SUBJECTS_URL = os.getenv("XANO_SUBJECTS_URL") or "https://x8ki-letl-twmt.n7.xano.io/api:LG5UUEEH/subjects"
-DEFAULT_TASKS_URL = os.getenv("XANO_TASKS_URL") or "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks"
+DEFAULT_SUBJECTS_URL = get_config_value("XANO_SUBJECTS_URL") or "https://x8ki-letl-twmt.n7.xano.io/api:LG5UUEEH/subjects"
+DEFAULT_TASKS_URL = get_config_value("XANO_TASKS_URL") or "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks"
 
 
 def _get_auth_headers(token: Optional[str] = None) -> Dict[str, str]:
     """Builds Authorization header using explicit token or environment variable."""
-    auth_token = token or os.getenv("XANO_AUTH_TOKEN")
+    auth_token = token or get_config_value("XANO_AUTH_TOKEN")
     headers = {"Content-Type": "application/json"}
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"

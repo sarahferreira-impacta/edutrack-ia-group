@@ -35,6 +35,16 @@ class TestStreamlitApp(unittest.TestCase):
         self.assertIn("button[aria-label*=\"Show password\"]", source)
         self.assertIn("button[aria-label*=\"Hide password\"]", source)
 
+    def test_auth_header_is_static_without_negative_margin(self):
+        source = Path(APP_PATH).read_text(encoding="utf-8")
+        self.assertIn("position: static !important;", source)
+        self.assertIn("padding-top: 0 !important;", source)
+        self.assertIn("margin-top: 0 !important;", source)
+        self.assertIn("display: none !important;", source)
+        self.assertNotIn("margin: -6rem -6rem 3rem -6rem", source)
+        self.assertNotIn("position: fixed", source)
+        self.assertNotIn("position: sticky", source)
+
 
 if __name__ == "__main__":
     unittest.main()
