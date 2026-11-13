@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
+import streamlit as st
 
 
 def load_dotenv() -> Dict[str, str]:
@@ -27,13 +28,35 @@ def load_dotenv() -> Dict[str, str]:
     return values
 
 
+def get_config_value(key: str, default: Optional[str] = None) -> Optional[str]:
+    """Reads configuration from Streamlit secrets first, then environment, then .env fallback."""
+    try:
+        secrets = getattr(st, "secrets", None)
+        if secrets is not None and hasattr(secrets, "get"):
+            value = secrets.get(key)
+            if value not in (None, ""):
+                return str(value)
+    except Exception:
+        pass
+
+    value = os.getenv(key)
+    if value not in (None, ""):
+        return value
+
+    env_values = load_dotenv()
+    value = env_values.get(key)
+    if value not in (None, ""):
+        return value
+
+    return default
+
+
 def get_xano_base_url() -> str:
-    """Returns the configured Xano auth base URL from env or .env file."""
-    load_dotenv()
+    """Returns the configured Xano auth base URL from Streamlit secrets or the environment."""
     base_url = (
-        os.getenv("XANO_AUTH_BASE_URL")
-        or os.getenv("XANO_BASE_URL")
-        or os.getenv("XANO_API_URL")
+        get_config_value("XANO_AUTH_BASE_URL")
+        or get_config_value("XANO_BASE_URL")
+        or get_config_value("XANO_API_URL")
         or ""
     )
     return base_url.rstrip("/")
@@ -43,7 +66,7 @@ def build_xano_url(path: str) -> str:
     """Builds a full endpoint URL from the configured Xano base URL."""
     base_url = get_xano_base_url()
     if not base_url:
-        raise ValueError("XANO_BASE_URL is not configured. Add it to the project .env file.")
+        raise ValueError("XANO_BASE_URL is not configured. Add it to Streamlit secrets or the project .env file.")
     normalized_path = path.lstrip("/")
     return f"{base_url}/{normalized_path}"
 
@@ -123,7 +146,7 @@ def get_current_user(token: str) -> Dict[str, Any]:
 
 def update_current_user_profile(name: Optional[str] = None, email: Optional[str] = None, token: Optional[str] = None) -> Dict[str, Any]:
     """Attempts to update the authenticated user profile via the user endpoint when available."""
-    token = token or os.getenv("XANO_AUTH_TOKEN") or (os.environ.get("auth_token") if "auth_token" in os.environ else None)
+    token = token or get_config_value("XANO_AUTH_TOKEN") or (os.environ.get("auth_token") if "auth_token" in os.environ else None)
     if not token:
         raise ValueError("Token de autenticação ausente.")
 
@@ -178,7 +201,7 @@ def update_current_user_profile(name: Optional[str] = None, email: Optional[str]
 
 def change_password(current_password: str, new_password: str, confirm_password: str, token: Optional[str] = None) -> Dict[str, Any]:
     """Changes the authenticated user's password using the Xano reset endpoint."""
-    token = token or os.getenv("XANO_AUTH_TOKEN")
+    token = token or get_config_value("XANO_AUTH_TOKEN")
     if not token:
         raise ValueError("Token de autenticação ausente.")
 

@@ -5,6 +5,9 @@ from datetime import datetime
 from gerar_relatorio import generate_report_pdf
 from services.subject_service import count_active_subjects, fetch_subjects_from_xano, get_all_subjects, get_auth_token
 from services.task_service import fetch_tasks_from_xano
+from styles.theme import inject_css
+
+inject_css()
 
 
 def _normalize_task_status(value):
@@ -109,8 +112,19 @@ def _build_report_data(user, subjects, tasks, dashboard):
 
 
 def render_dashboard_page():
-    st.title("📊 Painel de Controle")
-    st.caption("Bem-vindo ao seu assistente acadêmico! Acompanhe suas disciplinas, tarefas e seu progresso acadêmico.")
+    user = st.session_state.get("current_user") or {}
+    user_name = user.get("name") or "Usuário"
+
+    st.markdown(
+        f"<h1 style='color:#0C1E33;font-size:1.75rem;font-weight:800;margin-bottom:0.1rem;'>"
+        f"👋 Bem-Vindo, {user_name}!</h1>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='color:#5A7084;font-size:0.875rem;margin-bottom:1.5rem;'>"
+        "Acompanhe suas disciplinas, tarefas e seu progresso acadêmico.</p>",
+        unsafe_allow_html=True,
+    )
 
     has_token = bool(get_auth_token())
     if has_token:
@@ -155,7 +169,12 @@ def render_dashboard_page():
     col7.metric("Progresso geral", f"{dashboard['overall_completion']}%")
 
     st.markdown("---")
-    st.subheader("Relatório de Tarefas")
+
+    st.markdown(
+        "<h3 style='color:#0C1E33;font-weight:700;margin-bottom:1rem;'>"
+        "📈 Desempenho</h3>",
+        unsafe_allow_html=True,
+    )
 
     if tasks:
         chart_data = pd.DataFrame(
@@ -172,15 +191,21 @@ def render_dashboard_page():
         with chart_col:
             st.bar_chart(chart_data.set_index("status")["count"])
         with summary_col:
-            for label, value in [
-                ("Concluídas", dashboard["completed_tasks"]),
-                ("Pendentes", dashboard["pending_tasks"]),
-                ("Em andamento", dashboard["in_progress_tasks"]),
+            for label, value, bg, text_color in [
+                ("Concluídas",   dashboard["completed_tasks"],   "#CCEFBF", "#2D6A1F"),
+                ("Pendentes",    dashboard["pending_tasks"],     "#FDE1AC", "#7A5000"),
+                ("Em andamento", dashboard["in_progress_tasks"], "#E1D2FF", "#4B2D9A"),
             ]:
-                color = "#16a34a" if label == "Concluídas" else "#f59e0b" if label == "Pendentes" else "#2563eb"
                 st.markdown(
-                    f"<div style='border-left: 5px solid {color}; padding: 10px 12px; margin-bottom: 8px; border-radius: 8px; background: rgba(255,255,255,0.02);'>"
-                    f"<strong>{label}</strong><br><span style='font-size: 1.4rem;'>{value}</span>"
+                    f"<div style='"
+                    f"background:{bg};"
+                    f"border-radius:12px;"
+                    f"padding:12px 16px;"
+                    f"margin-bottom:10px;"
+                    f"'>"
+                    f"<p style='margin:0;font-size:0.75rem;font-weight:600;"
+                    f"color:{text_color};text-transform:uppercase;letter-spacing:0.05em;'>{label}</p>"
+                    f"<span style='font-size:1.6rem;font-weight:800;color:{text_color};'>{value}</span>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -188,7 +213,12 @@ def render_dashboard_page():
         st.info("Você ainda não possui tarefas cadastradas.")
 
     st.markdown("---")
-    st.subheader("Minhas Disciplinas")
+
+    st.markdown(
+        "<h3 style='color:#0C1E33;font-weight:700;margin-bottom:1rem;'>"
+        "📚 Minhas Disciplinas</h3>",
+        unsafe_allow_html=True,
+    )
     subject_summary = summarize_subject_progress(subjects, tasks)
 
     if not subject_summary:
