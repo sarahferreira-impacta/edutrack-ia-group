@@ -88,8 +88,28 @@ def render_auth_screen() -> None:
         """
         <style>
         /* Fundo geral da tela de login/cadastro limpo e público */
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
         .stApp {
             background: linear-gradient(135deg, #F0F4F8 0%, #E2EBF4 50%, #F5F8FB 100%) !important;
+            min-height: 100vh !important;
+            overflow: hidden !important;
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }
+
+        [data-testid="stMain"],
+        section[data-testid="stMain"],
+        .block-container {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            max-width: none !important;
+            overflow: visible !important;
         }
 
         /* Oculta totalmente qualquer resquício de sidebar na tela pública */
@@ -101,21 +121,37 @@ def render_auth_screen() -> None:
             width: 0 !important;
         }
 
+        [data-testid="stHeader"] {
+            display: none !important;
+        }
+
+        [data-testid="stToolbar"] {
+            display: none !important;
+        }
+
         .auth-topbar {
             background-color: #0C1E33;
-            padding: 1.25rem 3.5rem;
-            margin: -6rem -6rem 3rem -6rem;
+            padding: 0.45rem 1.5rem 0.75rem;
+            margin: 0;
             display: flex;
             align-items: center;
-            gap: 1.25rem;
+            justify-content: flex-start;
+            gap: 0.9rem;
             box-shadow: 0 4px 12px rgba(12, 30, 51, 0.15);
-            position: static !important;
+            position: relative !important;
             top: auto !important;
-            z-index: auto !important;
+            left: auto !important;
+            right: auto !important;
+            z-index: 1 !important;
             opacity: 1 !important;
             visibility: visible !important;
             overflow: visible !important;
             background-image: none !important;
+            border-radius: 0;
+            width: 100%;
+            max-width: none;
+            box-sizing: border-box;
+            flex-wrap: nowrap;
         }
 
         .auth-topbar::before,
@@ -141,8 +177,12 @@ def render_auth_screen() -> None:
         .auth-topbar-icon {
             font-size: 2.2rem;
             line-height: 1;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
+            margin-left: 0.2rem;
+            transform: translateY(-1px);
         }
 
         .auth-topbar-copy {
@@ -152,6 +192,7 @@ def render_auth_screen() -> None:
             min-width: 0;
             position: static !important;
             z-index: auto !important;
+            margin-left: 0.15rem;
         }
 
         .auth-topbar-title {
@@ -160,28 +201,38 @@ def render_auth_screen() -> None:
             opacity: 1 !important;
             visibility: visible !important;
             display: block !important;
-            font-size: 1.45rem;
+            font-size: clamp(1.8rem, 2.2vw, 2.6rem);
             font-weight: 800;
             letter-spacing: 0.04em;
             margin: 0;
-            line-height: 1.2;
+            line-height: 1.1;
             text-shadow: none !important;
             box-shadow: none !important;
             position: static !important;
             top: auto !important;
             z-index: auto !important;
             flex: 0 0 auto;
+            white-space: nowrap;
         }
 
         .auth-topbar-subtitle {
             color: rgba(255, 255, 255, 0.82) !important;
             opacity: 1 !important;
             visibility: visible !important;
-            font-size: 0.85rem;
+            font-size: clamp(0.82rem, 1vw, 1rem);
             margin: 0.15rem 0 0 0;
             font-weight: 400;
             display: block;
             line-height: 1.4;
+            white-space: normal;
+        }
+
+        .auth-topbar-icon {
+            font-size: clamp(2rem, 2.4vw, 2.7rem);
+            line-height: 1;
+            display: inline-block;
+            flex-shrink: 0;
+            transform: translateY(-1px);
         }
 
         div[data-testid="stTextInput"] {
@@ -330,9 +381,6 @@ def render_auth_screen() -> None:
         </div>
         """
     )
-
-    if "auth_mode" not in st.session_state:
-        st.session_state["auth_mode"] = "login"
 
     _, center_col, _ = st.columns([1, 4.5, 1])
 

@@ -6,6 +6,7 @@ from services.task_service import _get_tasks_api_url
 
 
 class TestXanoRouteConfig(unittest.TestCase):
+    @patch("services.subject_service.st.secrets", {})
     @patch("services.subject_service.os.getenv", side_effect=lambda key, default=None: default)
     def test_subject_default_url_uses_subject_api_group(self, _mock_getenv):
         self.assertEqual(
@@ -13,6 +14,7 @@ class TestXanoRouteConfig(unittest.TestCase):
             "https://x8ki-letl-twmt.n7.xano.io/api:LG5UUEEH/subjects",
         )
 
+    @patch("services.task_service.st.secrets", {})
     @patch("services.task_service.os.getenv", side_effect=lambda key, default=None: default)
     def test_task_default_url_uses_task_api_group(self, _mock_getenv):
         self.assertEqual(
@@ -20,6 +22,7 @@ class TestXanoRouteConfig(unittest.TestCase):
             "https://x8ki-letl-twmt.n7.xano.io/api:6lZMI4mm/academic_tasks",
         )
 
+    @patch("services.task_service.st.secrets", {})
     @patch("services.task_service.requests.post")
     @patch("services.task_service.get_auth_token", return_value="token-123")
     @patch("services.task_service.os.getenv", side_effect=lambda key, default=None: default)
