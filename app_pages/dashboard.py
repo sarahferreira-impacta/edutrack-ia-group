@@ -65,6 +65,7 @@ def summarize_subject_progress(subjects, tasks):
 
 
 def _build_report_data(user, subjects, tasks, dashboard):
+    """Build the data dict expected by generate_report_pdf using real session data."""
     subject_progress = summarize_subject_progress(subjects, tasks)
     report_subjects = []
     for sp in subject_progress:
@@ -78,6 +79,7 @@ def _build_report_data(user, subjects, tasks, dashboard):
             "progress": sp["progress_percentage"],
         })
 
+    # Build subject name lookup for tasks
     subject_names = {}
     for s in subjects or []:
         subject_names[str(s.get("id", ""))] = s.get("name") or "Sem disciplina"
@@ -139,8 +141,10 @@ def render_dashboard_page():
         if str(subject.get("status") or "active").lower() in {"active", "in_progress", "em andamento"}
     )
 
+    # PDF download button – uses real data from the authenticated user
     token = st.session_state.get("auth_token")
     if token:
+        user = st.session_state.get("current_user") or {}
         try:
             report_data = _build_report_data(user, subjects, tasks, dashboard)
             pdf_bytes = generate_report_pdf(report_data)
